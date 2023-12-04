@@ -86,9 +86,9 @@ void setup() {
   ReadingMode = false;
   SunriseMode = false;
 
-  Serial.begin(9600);
-  delay(200);
-  Serial.println("Clock Initiated");
+//  Serial.begin(9600);
+//  delay(200);
+//  Serial.println("Clock Initiated");
 }
 void loop() {
   tmElements_t tm;
@@ -189,13 +189,6 @@ void loop() {
       lcd.setCursor(0, 1);
       lcd.print("Alarm Hour = ");
       print2digits(AlarmHour);
-      Serial.println();
-      Serial.print("Adjusting Hour");
-      Serial.println();
-      Serial.print("Alarm Set For ");
-      Serial.print(AlarmHour);
-      Serial.print(":");
-      Serial.print(AlarmMinute);
     }
   }
   if (AlarmStateCount == 2) {
@@ -222,13 +215,6 @@ void loop() {
       lcd.setCursor(0, 1);
       lcd.print("Alarm Min = ");
       lcd.print(AlarmMinute);
-      Serial.println();
-      Serial.print("Adjusting Minute");
-      Serial.println();
-      Serial.print("Alarm Set For ");
-      Serial.print(AlarmHour);
-      Serial.print(":");
-      Serial.print(AlarmMinute);
     }
   } //switches from 3-4 once changed to remove the 20 minutes to allow for sunrise effect. Not needed above because we use the button input to move from 0 - 3
   if (AlarmStateCount == 3) {  // Also adjusts for if alarm is set for 6:05, this function allows the AlarmStartTime to be 5:55 for the light function.
@@ -246,16 +232,6 @@ void loop() {
       AlarmStartHour = (AlarmStartHour - 1);
       AlarmStartMinute = (60 - (AlarmStartMinute * -1));  // allows alarm start minute if negative to multiply by a negative and remove that from 60 to get the start time.
     }
-    Serial.print(AlarmStartHour);
-    Serial.print(":");
-    Serial.println(AlarmStartMinute);
-    Serial.println("Alarm is Active And set For");
-    Serial.print(AlarmHour);
-    Serial.print(":");
-    Serial.print(AlarmMinute);
-    Serial.print(tm.Hour);
-    Serial.print(":");
-    Serial.print(tm.Minute);
     delay(2000);  //may impact reading/sunset modes. Could do a work around later for this.
     lcd.clear();
     print2digits(tm.Hour);
@@ -282,13 +258,13 @@ void loop() {
       if (ButtonStateReading == LOW) {
         if (ReadingMode != true) {
           ReadingMode = true;
-          Serial.print("Reading Mode On");
+//          Serial.print("Reading Mode On");
           if (AlarmStateCount == 5){
             AlarmStateCount = 0;
           }
         } else {
           (ReadingMode = false);
-          Serial.print("Reading Mode Off");
+//          Serial.print("Reading Mode Off");
         }
       }
     }
@@ -298,7 +274,7 @@ void loop() {
     SunsetTimer = (millis() - 500);
     if ((millis() - ReadingTimer) > 150){
       ReadingTimer = millis();
-      Serial.println("Reading Mode On");
+//      Serial.println("Reading Mode On");
       analogWrite (redLED, brightnessLED);
       analogWrite(whiteLED, brightnessLED);
       analogWrite(blueLED, brightnessLED);
@@ -310,7 +286,7 @@ void loop() {
   if (ReadingMode == false){
     if ((millis() - ReadingTimer) < 150){
       ReadingTimer = millis();
-      Serial.println("Reading Mode off");
+//      Serial.println("Reading Mode off");
       analogWrite(redLED, brightnessLED);
       analogWrite(whiteLED, brightnessLED);
       analogWrite(blueLED, brightnessLED);
@@ -334,13 +310,13 @@ void loop() {
       if (ButtonStateSunset == LOW) {
         if (SunsetMode != true) {
           SunsetMode = true;
-          Serial.print("Sunset Mode On");
+//          Serial.print("Sunset Mode On");
           if (AlarmStateCount == 5){
             AlarmStateCount = 0;
           }
         } else {
           (SunsetMode = false);
-          Serial.print("Sunset Mode Off");
+//          Serial.print("Sunset Mode Off");
           analogWrite(redLED, 0);
         }
       }
@@ -351,7 +327,7 @@ void loop() {
     ReadingTimer = (millis() - 500);
     if ((millis() - SunsetTimer) > 150){
       SunsetTimer = millis();
-      Serial.println("Sunset Mode on");
+//      Serial.println("Sunset Mode on");
       analogWrite (redLED, brightnessLED);
       analogWrite (whiteLED, brightnessLED);
       analogWrite(blueLED, 0);
@@ -363,7 +339,7 @@ void loop() {
   if (SunsetMode == false){
     if ((millis() - SunsetTimer) < 150){
       SunsetTimer = millis();
-      Serial.println("Sunset Mode Off");
+//      Serial.println("Sunset Mode Off");
       analogWrite (redLED, brightnessLED);
       analogWrite (whiteLED, brightnessLED);
       brightnessLED = brightnessLED - FadeAmount;
@@ -422,8 +398,8 @@ void loop() {
   LCDLighting(tm.Hour); //Controls the LCD/Button Lights
 }
 void print2digits(int number) { //Allows the display to show "00" instead of "0"
-//  if (number >= 0 && number < 10) {
-    Serial.write('0');
+  if (number >= 0 && number < 10) {
+//    Serial.write('0');
     lcd.print("0");
   }
 //  Serial.print(number);
