@@ -1,0 +1,481 @@
+//11/25/23 added blue to the reading mode. Forgot to remove the notes // thing in front of blueLED output identifier in in setup
+//11/24/23 changed Sunrise time from 20 to 10 minutes.
+//11/21/23. Added LCD display dimming at night. May be able to change this after it is in a enclosure.
+// SDA pin to RTC goes from Arduino Nano pin A4
+// SCL pin to RTC goes from Arduino Nano pin A5
+#include <Wire.h>
+#include <LiquidCrystal.h>
+#include <TimeLib.h>
+#include <DS1307RTC.h>
+#include <BasicEncoder.h>
+
+LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
+const int8_t pinA = 14;  //
+const int8_t pinB = 15;  //
+const int LCDButtonLight = 6;
+const int EncoderButton = 16;  //
+const int ReadingButton = 17;
+const int SunsetButton = 18;
+const int whiteLED = 5;
+//const int greenLED = 6;
+const int blueLED = 4;
+const int redLED = 3;
+// pins 2 and 3 are used for SDA and SLA on some modules.
+
+BasicEncoder encoder(pinA, pinB);
+
+int AlarmHour;       //hour the alarm is set for.
+int AlarmMinute;     //minute the alarm is set for.
+int AlarmStartHour;  //hour the light starts to turn on.
+int PreviousMinute;
+int AlarmStateCount;
+int AlarmStartMinute;  // minute the light starts to turn on.
+int LastAlarmStateCount;
+int LCDLightCount;
+
+int FadeAmount = 1;
+int brightnessLED;
+int brightnessRedLED;
+int brightnessBlueLED;
+int brightnessWhiteLED;
+int brightnessGreenLED;
+int LCDBrightness = 50;
+
+int ActiveButtonStateEncoder = 0;
+int ActiveButtonStateReading = 0;
+int ActiveButtonStateSunset = 0;
+int LastButtonStateEncoder = LOW;
+int LastButtonStateReading = LOW;
+int LastButtonStateSunset = LOW;
+int ButtonStateEncoder;
+int ButtonStateReading;
+int ButtonStateSunset;
+int ButtonStateSunset1;   //used for long press if I decide to use it
+int ButtonStateReading1;  //used for long press if I decide to use it
+//int DisplayMonth;
+//int MonthArray [12] = {Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec}
+bool ClearCount;
+bool SunsetMode;
+bool ReadingMode;
+bool SunriseMode;
+
+unsigned long SunriseTimer;
+unsigned long SunsetTimer;
+unsigned long ReadingTimer;
+unsigned long LastDebounceTimeEncoder;
+unsigned long LastDebounceTimeReading;
+unsigned long LastDebounceTimeSunset;
+unsigned long LightDelayShort = 20;
+unsigned long LightDelayLong = 100;
+unsigned long DebounceDelay = 50;
+unsigned long DebounceDelayLong = 2000;
+
+void setup() {
+  pinMode(ReadingButton, INPUT_PULLUP);
+  pinMode(SunsetButton, INPUT_PULLUP);
+  pinMode(EncoderButton, INPUT_PULLUP);
+  pinMode(whiteLED, OUTPUT);
+  pinMode(redLED, OUTPUT);
+  //  pinMode(greenLED, OUTPUT);
+  pinMode(blueLED, OUTPUT);
+  pinMode(LCDButtonLight, OUTPUT);
+  lcd.begin(16, 2);
+  lcd.clear();
+  AlarmHour = 6;
+  AlarmMinute = 20;
+  AlarmStartHour = 0;
+  AlarmStateCount = 0;
+  // 0 = not set, 1 = setting hour, 2 = setting minutes, 3 = AlarmSet time is setup with this
+  // 4 is alarm is actually set,  5 = alarm time has been reached and sunrise is active. Above that it is returned back to 0.
+  AlarmStartMinute = 0;
+  LastAlarmStateCount = 0;
+  LCDLightCount = 0;
+
+  ClearCount = false;
+  SunsetMode = false;
+  ReadingMode = false;
+  SunriseMode = false;
+
+  Serial.begin(9600);
+  delay(200);
+  Serial.println("Clock Initiated");
+}
+void loop() {
+  tmElements_t tm;
+  if (RTC.read(tm)) {
+    if (tm.Minute != PreviousMinute) {
+      Serial.print("Ok, Time = ");
+      print2digits(tm.Hour);
+      Serial.write(':');
+      print2digits(tm.Minute);
+      PreviousMinute = tm.Minute;
+      Serial.write(':');
+      print2digits(tm.Second);
+      Serial.print(", Date (D/M/Y) = ");
+      Serial.print(tm.Day);
+      Serial.write('/');
+      Serial.print(tm.Month);
+      Serial.write('/');
+      Serial.print(tmYearToCalendar(tm.Year));
+      Serial.println();
+      if (AlarmStateCount == 0) {
+        lcd.clear();
+        print2digits(tm.Hour);
+        lcd.print(":");
+        print2digits(tm.Minute);
+        lcd.print("  ");
+        lcd.print(tm.Month);
+        lcd.print("/");
+        lcd.print(tm.Day);
+        lcd.print("/");
+        lcd.print(tmYearToCalendar(tm.Year));
+        lcd.setCursor(0, 1);
+        lcd.print("Have A Good Day");
+      }
+      if (AlarmStateCount == 4) {
+        lcd.clear();
+        print2digits(tm.Hour);
+        lcd.print(":");
+        print2digits(tm.Minute);
+        lcd.print("  ");
+        lcd.print(tm.Month);
+        lcd.print("/");
+        lcd.print(tm.Day);
+        lcd.print("/");
+        lcd.print(tmYearToCalendar(tm.Year));
+        lcd.setCursor(0, 1);
+        lcd.print("Alarm Is Active");
+      }
+      if (AlarmStateCount == 5) {
+        lcd.clear();
+        print2digits(tm.Hour);
+        lcd.print(":");
+        print2digits(tm.Minute);
+        lcd.print("  ");
+        lcd.print(tm.Month);
+        lcd.print("/");
+        lcd.print(tm.Day);
+        lcd.print("/");
+        lcd.print(tmYearToCalendar(tm.Year));
+        lcd.setCursor(0, 1);
+        lcd.print("Good Morning!");
+      }
+    }
+  } else {  //Could probably remove this but in place Write to the LCD display for Clock Missing.
+    if (RTC.chipPresent()) {
+      Serial.println("The DS1307 is stopped.  Please run the SetTime");
+      Serial.println("example to initialize the time and begin running.");
+      Serial.println();
+    } else {
+      Serial.println("DS1307 read error!  Please check the circuitry.");
+      Serial.println();
+    }
+    //delay(9000); //May be an issue with encoder
+  }
+  //delay(1000); //May be an isssue with encoder // Used if LastMinute != tm.minute update LCD.
+
+  //End of clock function. Beginning of Encoder input
+  ActiveButtonStateEncoder = digitalRead(EncoderButton);
+  ActiveButtonStateReading = digitalRead(ReadingButton);
+  ActiveButtonStateSunset = digitalRead(SunsetButton);
+
+
+  if (ActiveButtonStateEncoder != LastButtonStateEncoder) {
+    LastDebounceTimeEncoder = millis();
+  }
+  if ((millis() - LastDebounceTimeEncoder) > DebounceDelay) {
+    if (ActiveButtonStateEncoder != ButtonStateEncoder) {
+      ButtonStateEncoder = ActiveButtonStateEncoder;
+      if (ButtonStateEncoder == LOW) {
+        AlarmStateCount = (AlarmStateCount + 1);
+      }
+    }
+  }
+  if (AlarmStateCount != LastAlarmStateCount) {
+    Serial.println();
+    Serial.print(AlarmStateCount);
+    LastAlarmStateCount = AlarmStateCount;  //used to confirm encoder button operation was good. Could leave for trouble shooting if an issue arises in the future.
+  }
+  if (AlarmStateCount == 1) {
+    if (ClearCount == false) {
+      lcd.clear();
+      lcd.print("Set Alarm Hour");
+      lcd.setCursor(0, 1);
+      lcd.print("Alarm Hour = ");
+      print2digits(AlarmHour);
+      ClearCount = true;
+    }
+    encoder.service();
+    int encoder_change = encoder.get_change();
+    if (encoder_change) {
+      AlarmHour = (AlarmHour + encoder_change);
+      if (AlarmHour > 24) {
+        AlarmHour = 1;
+      }
+      lcd.clear();
+      lcd.print("Set Alarm Hour");
+      lcd.setCursor(0, 1);
+      lcd.print("Alarm Hour = ");
+      print2digits(AlarmHour);
+      Serial.println();
+      Serial.print("Adjusting Hour");
+      Serial.println();
+      Serial.print("Alarm Set For ");
+      Serial.print(AlarmHour);
+      Serial.print(":");
+      Serial.print(AlarmMinute);
+    }
+  }
+  if (AlarmStateCount == 2) {  //may need to have a lcd update in this section if the code does not run through.
+    if (ClearCount == true) {
+      lcd.clear();
+      lcd.print("Set Alarm Minute");
+      lcd.setCursor(0, 1);
+      lcd.print("Alarm Min = ");
+      lcd.print(AlarmMinute);
+      ClearCount = false;
+    }
+    encoder.service();
+    int encoder_change = encoder.get_change();
+    if (encoder_change) {
+      AlarmMinute = (AlarmMinute + (encoder_change * 5));
+      if (AlarmMinute > 59) {
+        AlarmMinute = 0;
+      }
+      if (AlarmMinute < 0) {  //may need to be 00 depending on how tm.Minute "00" registers compared to "0"
+        AlarmMinute = 55;
+      }
+      lcd.clear();
+      lcd.print("Set Alarm Minute");
+      lcd.setCursor(0, 1);
+      lcd.print("Alarm Min = ");
+      lcd.print(AlarmMinute);
+      Serial.println();
+      Serial.print("Adjusting Minute");
+      Serial.println();
+      Serial.print("Alarm Set For ");
+      Serial.print(AlarmHour);
+      Serial.print(":");
+      Serial.print(AlarmMinute);
+    }
+  }                            //switches from 3-4 once changed to remove the 20 minutes to allow for sunrise effect. Not needed above because we use the button input to move from 0 - 3
+  if (AlarmStateCount == 3) {  //Almost had this loop through knocking 20 minutes off each loop through.
+    AlarmStartHour = AlarmHour;
+    AlarmStartMinute = AlarmMinute - 10;  // basically if alarm is set for 6:05, this function allows the AlarmStartTime to be 5:55 for the light function.
+    AlarmStateCount = 4;
+    lcd.clear();
+    lcd.print("Alarm set ");
+    lcd.print(AlarmHour);
+    lcd.print(":");
+    lcd.print(AlarmMinute);
+    lcd.setCursor(0, 1);
+    lcd.print("Good Night!");
+    if (AlarmStartMinute < 0) {
+      AlarmStartHour = (AlarmStartHour - 1);
+      AlarmStartMinute = (60 - (AlarmStartMinute * -1));  // allows alarm start minute if negative to multiply by a negative and remove that from 60 to get the start time.
+    }
+    Serial.print(AlarmStartHour);
+    Serial.print(":");
+    Serial.println(AlarmStartMinute);
+    Serial.println("Alarm is Active And set For");
+    Serial.print(AlarmHour);
+    Serial.print(":");
+    Serial.print(AlarmMinute);
+    Serial.print(tm.Hour);
+    Serial.print(":");
+    Serial.print(tm.Minute);
+    delay(2000);  //may impact reading/sunset modes.
+    lcd.clear();
+    print2digits(tm.Hour);
+    lcd.print(":");
+    print2digits(tm.Minute);
+    lcd.print("  ");
+    lcd.print(tm.Month);
+    lcd.print("/");
+    lcd.print(tm.Day);
+    lcd.print("/");
+    lcd.print(tmYearToCalendar(tm.Year));
+    lcd.setCursor(0, 1);
+    lcd.print("Alarm Is Active");
+  }
+
+  //End of encoder Alarm set function. Beginning of Reading button input
+
+  if (ActiveButtonStateReading != LastButtonStateReading) {  //initiates reading function.
+    LastDebounceTimeReading = millis();
+  }
+  if ((millis() - LastDebounceTimeReading) > DebounceDelay) {
+    if (ActiveButtonStateReading != ButtonStateReading) {
+      ButtonStateReading = ActiveButtonStateReading;
+      if (ButtonStateReading == LOW) {
+        if (ReadingMode != true) {
+          ReadingMode = true;
+          Serial.print("Reading Mode On");
+          if (AlarmStateCount == 5){
+            AlarmStateCount = 6;
+          }
+        } else {
+          (ReadingMode = false);
+          Serial.print("Reading Mode Off");
+        }
+      }
+    }
+  }
+  if (ActiveButtonStateSunset != LastButtonStateSunset) {  //initiates reading function.
+    LastDebounceTimeSunset = millis();
+  }
+  if ((millis() - LastDebounceTimeSunset) > DebounceDelay) {
+    if (ActiveButtonStateSunset != ButtonStateSunset) {
+      ButtonStateSunset = ActiveButtonStateSunset;
+      if (ButtonStateSunset == LOW) {
+        if (SunsetMode != true) {
+          SunsetMode = true;
+          Serial.print("Sunset Mode On");
+          if (AlarmStateCount == 5){
+            AlarmStateCount = 6;
+          }
+        } else {
+          (SunsetMode = false);
+          Serial.print("Sunset Mode Off");
+          analogWrite(redLED, 0);
+        }
+      }
+    }
+  }
+
+  LastButtonStateEncoder = ActiveButtonStateEncoder;
+  LastButtonStateReading = ActiveButtonStateReading;
+  LastButtonStateSunset = ActiveButtonStateSunset;
+
+  if (AlarmStartHour == tm.Hour) {  // with this the lights do not turn on if accidentaly placed in alarmStateCount 5.
+    if (AlarmStartMinute == tm.Minute) {
+      if (AlarmStateCount == 4){
+      SunriseMode = true;
+      AlarmStateCount = 5;  //will probably change to change via encoder button.with a if Alarmcount = 3 and sunrisemode true. something like that. did this. Changed it to
+      }
+    }                       //allow for multiple ways to turn off Alarm.
+  }
+  if (AlarmStateCount == 5) { //This is the sunrise function.
+    if ((millis() - SunriseTimer) > 2362) { // 10 minutes to get to max brightness.
+      SunriseTimer = millis();
+      analogWrite(redLED, brightnessLED);
+      analogWrite(whiteLED, brightnessLED);
+      if (brightnessLED < 254) {
+        brightnessLED = brightnessLED + FadeAmount;
+      }
+    }
+  }
+  if (AlarmStateCount == 6){ //fade sunrise mode down when turned off.
+    analogWrite(redLED, brightnessLED);
+    analogWrite(whiteLED, brightnessLED);
+    if (brightnessLED == 0){
+      AlarmStateCount = 0;
+    }
+     else if (brightnessLED >0){
+      if ((millis() - SunriseTimer) > 470){ //should be just under 2 minutes to fade.
+        SunriseTimer = millis();
+      brightnessLED = (brightnessLED - FadeAmount);
+      }
+    }
+  }
+
+  if (AlarmStateCount > 6) {
+    AlarmStateCount = 0;
+    /*AlarmHour = 6;
+    AlarmMinute = 20;*/
+  }
+  if (ReadingMode == true){
+    SunsetMode = false;
+    if ((millis() - ReadingTimer) > 150){
+      ReadingTimer = millis();
+      Serial.println("Reading Mode On");
+      analogWrite (redLED, brightnessLED);
+      analogWrite(whiteLED, brightnessLED);
+      analogWrite(blueLED, brightnessLED);
+      if (brightnessLED < 254){
+        brightnessLED = brightnessLED + FadeAmount;
+      }
+    }
+  }
+  if (ReadingMode == false){ //doing it this way to avoid using a count system. once switched from true to false this runs through till the delay. May need to use a count.
+    if ((millis() - ReadingTimer) < 150){ // May be able to use millis here and then once faded out. Add a delay greater than 150. kicks it out.
+      ReadingTimer = millis();
+      Serial.println("Reading Mode off");
+      analogWrite(redLED, brightnessLED);
+      analogWrite(whiteLED, brightnessLED);
+      analogWrite(blueLED, brightnessLED);
+      brightnessLED = brightnessLED - FadeAmount;
+      delay (118); //Delay equals 30 seconds ((30 seconds) 30,000 millis / 254 counts)
+      if (brightnessLED <= 0){
+        analogWrite (redLED, brightnessLED);
+        analogWrite (whiteLED, brightnessLED);
+        analogWrite(blueLED, brightnessLED);
+        delay (500);
+      }
+    }
+  }
+  if (SunsetMode == true){
+    ReadingMode = false;
+        if ((millis() - SunsetTimer) > 150){
+      SunsetTimer = millis();
+      Serial.println("Sunset Mode on");
+      analogWrite (redLED, brightnessLED);
+      analogWrite (whiteLED, brightnessLED);
+      analogWrite(blueLED, 0);//May change this to fade out
+      if (brightnessLED < 254){
+        brightnessLED = brightnessLED + FadeAmount;
+      }
+    }
+  }
+  if (SunsetMode == false){
+    if ((millis() - SunsetTimer) < 150){
+      SunsetTimer = millis();
+      Serial.println("Sunset Mode Off");
+      analogWrite (redLED, brightnessLED);
+      analogWrite (whiteLED, brightnessLED);
+      brightnessLED = brightnessLED - FadeAmount;
+      delay (118);
+      if (brightnessLED <= 0){
+        analogWrite (redLED, brightnessLED);
+        analogWrite (whiteLED, brightnessLED);
+        delay (500);
+      }
+    }
+  }
+  LCDLighting(tm.Hour);
+}
+void print2digits(int number) {
+  if (number >= 0 && number < 10) {
+    Serial.write('0');
+    lcd.print("0");
+  }
+  Serial.print(number);
+  lcd.print(number);
+}
+void LCDLighting(int Hour){
+  if (Hour <=5){
+    LCDLightCount = 0;
+    }
+  if (Hour >=6){
+    LCDLightCount = 1;
+  }
+  if (Hour >=22){
+    LCDLightCount = 0;
+    }
+  if (AlarmStateCount == 5){
+    LCDLightCount = 1;
+  }
+if (ReadingMode == true){
+  LCDLightCount = 1;
+}
+if (SunsetMode == true){
+  LCDLightCount = 1;
+}
+if (LCDLightCount == 1){
+  analogWrite(LCDButtonLight, LCDBrightness);
+}
+if (LCDLightCount == 0){
+  analogWrite(LCDButtonLight, 5);
+}
+}
+// Still need to sort out how to turn off ReadingMode when Sunset Mode is turned on and vise versa. (may need to use previous modes timer.) // placed in each if true statements for the modes.
