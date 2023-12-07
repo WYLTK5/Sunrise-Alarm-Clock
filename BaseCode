@@ -149,7 +149,7 @@ void loop() {
       lcd.print("check circuitry!");
     }
   }
-
+PreviousMinute = tm.Minute;
   //End of clock function. Beginning of Encoder input
   ActiveButtonStateEncoder = digitalRead(EncoderButton);
   ActiveButtonStateReading = digitalRead(ReadingButton);
